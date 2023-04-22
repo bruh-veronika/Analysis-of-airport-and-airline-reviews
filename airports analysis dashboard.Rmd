@@ -1,0 +1,98 @@
+---
+title: "Исследование различных зависсимостей в данных по аэропортам"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(stringr)
+
+source("~/shared/minor2_2022/1-Intro/hw1/hw1_data.R")
+
+airline = hw1_get_data(df_name = "airline")
+airport = hw1_get_data(df_name = "airport")
+lounge = hw1_get_data(df_name = "lounge")
+seat = hw1_get_data(df_name = "seat")
+```
+
+Column {data-width=550}
+-----------------------------------------------------------------------
+
+### Зависимость выставленного рейтинга от момента написания отзыва
+
+```{r echo = F, message=FALSE, warning=FALSE}
+airport$date = ymd(airport$date) 
+airport = airport %>% mutate(weekday=wday(date,label=T)) %>%
+  mutate(is_weekend =  (weekday == "Sat" | weekday == "Sun"))
+airport1 = airport %>% filter(!is.na(overall_rating))
+median_rating=airport1 %>% group_by(is_weekend) %>% summarise(median_rating=median(overall_rating))
+mean_rating=airport1 %>% group_by(is_weekend) %>% summarise(mean_rating=round(mean(overall_rating),2))
+airport_mean = airport1 %>% group_by(is_weekend) %>% summarise(mean_rating=mean(overall_rating))
+ggplot(airport1,aes(x = factor(is_weekend), y = overall_rating)) +
+  geom_boxplot(fill="light blue")+
+  scale_x_discrete(breaks=c(FALSE,TRUE),label=c("Не выходной","Выходной")) + 
+  stat_summary(fun=mean, geom='point', shape=20, color="#EA6A47") +
+  xlab("")+
+  ylab("Общий рейтинг")+
+  ggtitle("Зависимость общего рейтинга\n от момента написания отзыва")+
+  theme_minimal()
+```
+
+
+Column {data-width=450}
+-----------------------------------------------------------------------
+
+### Доли перелётов Эконом класса в Boeing и Airbus
+
+```{r}
+airline_seat = full_join(airline,seat)
+airline_seat = airline_seat %>% select(content,aircraft,cabin_flown)
+airline_seat = airline_seat %>%
+  mutate(aircraft_new=ifelse(!is.na(aircraft),aircraft,ifelse(str_detect(airline_seat$content,"A[0-9][0-9][0-9]|Airbus|AIRBUS|airbus"),"AIRBUS",ifelse(str_detect(airline_seat$content,"Boeing|Boing|BOEING|B[0-9][0-9][0-9]|boeing"),"BOEING",NA))))
+airline_seat$aircraft_new = airline_seat$aircraft_new %>%
+    str_replace_all("A[0-9][0-9][0-9]|Airbus|airbus|A[0-9]","AIRBUS")
+airline_seat$aircraft_new = airline_seat$aircraft_new %>%
+  str_replace_all("Boeing|Boing|boeing|B[0-9][0-9][0-9]","BOEING")
+airline_seat$aircraft_new = airline_seat$aircraft_new %>% str_remove_all("&nbsp|\\-|\\.|\\/|and|[0-9]|[0-9][0-9][0-9]|Embraer ERJ|ER|E |ERJ|CRJ|MD|Dash| Q|Cessna|Unknown|\\,|LR|W|")
+airline_seat$aircraft_new = airline_seat$aircraft_new %>% str_remove_all(" ")
+airline_seat$aircraft_new = airline_seat$aircraft_new %>% str_remove_all("  ")
+airline_seat$aircraft_new = airline_seat$aircraft_new %>% str_replace_all("BOEINGBOEINGAIRBUS AIRBUS|BOEINGAIRBUSAIRBUS|BOEINGAIRBUSBOEING|BOEINGAIRBUS|AIRBUSBOEING","AIRBUS BOEING")
+airline_seat$aircraft_new = airline_seat$aircraft_new %>% 
+  str_replace_all("AIRBUSAIRBUS","AIRBUS")
+airline_seat$aircraft_new = airline_seat$aircraft_new %>% 
+  str_replace_all("BOEINGBOEING","BOEING")
+airline_seat=airline_seat %>% filter(!is.na(aircraft_new))%>% 
+  filter(aircraft_new!="")%>% filter(aircraft_new!=" ") %>% filter(aircraft_new!="AIRBUS BOEING")%>% filter(aircraft_new!="BOEINGAIRBUS BOEING")
+airline_seat=airline_seat %>% 
+  mutate(cabin_flown=str_replace_all(cabin_flown,"World Traveller Plus","Premium Economy")) %>% filter(!is.na(cabin_flown))
+airline_seat$aircraft_new=factor(airline_seat$aircraft_new)
+airline_seat$cabin_flown=factor(airline_seat$cabin_flown,levels=c("First Class","Business Class","Premium Economy","Economy"))
+levels(airline_seat$cabin_flown) = c("Первый Класс","Бизнес Класс","Премиум эконом","Эконом")
+ggplot(airline_seat) + geom_bar(aes(x=aircraft_new,fill=cabin_flown,stat="identity"),color = "white", alpha = 0.7,position="fill")+
+ylab("Количество наблюдений")+
+  xlab("Модель самолёта")+
+  scale_fill_discrete(name="Тип кабины")+
+  ggtitle("Доли полётов в кабинах разного класса\nдля моделей самолётов BOEING и AIRBUS")+
+  theme_minimal()+
+  scale_y_continuous(labels = scales::percent_format())
+```
+
+### Разница без учёта Premium Economy
+
+```{r}
+valueBox("2 %", icon = 'fa-dollar',color="#EA6A47")
+```
+
+
+
+### Разница с учётом Premium Economy
+
+```{r}
+valueBox("10 %", icon = 'fa-arrow-alt-circle-up',color="success")
+```
